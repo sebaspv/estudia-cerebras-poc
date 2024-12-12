@@ -1,0 +1,9 @@
+langchain-cerebras
+twilio
+fastapi
+uvicorn
+pydantic
+python-multipart
+python-dotenv
+redis[hiredis]
+pydantic-redis
