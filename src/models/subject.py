@@ -1,9 +1,11 @@
 from pydantic import BaseModel
 
+from .exam import Exam
+from .reading import Reading
+
 
 class Subject(BaseModel):
-    _primary_key_field: str = "id"
+    student_id: str
     class_name: str
-    latest_reading: str
-    latest_exam: str
-    latest_answers: str
+    latest_reading: Reading
+    latest_exam: Exam
