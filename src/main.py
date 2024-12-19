@@ -3,7 +3,7 @@ import json
 import redis
 import uvicorn
 from dotenv import dotenv_values
-from fastapi import FastAPI, Form
+from fastapi import FastAPI, Form, Response
 from langchain_cerebras import ChatCerebras
 from twilio.rest import Client
 from twilio.twiml.messaging_response import MessagingResponse
@@ -18,12 +18,19 @@ DOTENV = dotenv_values(dotenv_path=".env")
 TWILIO_ACCOUNT_SID = DOTENV["TWILIO_ACCOUNT_SID"]
 TWILIO_AUTH_TOKEN = DOTENV["TWILIO_AUTH_TOKEN"]
 TWILIO_PHONE_NUMBER = DOTENV["TWILIO_PHONE_NUMBER"]
+REDIS_HOST = DOTENV["REDIS_URL"]
+REDIS_PASSWORD = DOTENV["REDIS_PASSWORD"]
 
 twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 model = ChatCerebras(model="llama-3.3-70b", temperature=0.2, top_p=0.9)
 exam_model = model.with_structured_output(Exam)
 reading_model = model.with_structured_output(Reading)
-r = redis.Redis(host="localhost", port=6379, decode_responses=True)
+r = redis.Redis(
+    host=REDIS_HOST,
+    port=18201,
+    decode_responses=True,
+    password=REDIS_PASSWORD,
+)
 
 
 @app.post("/webhook/estudia")
@@ -34,11 +41,10 @@ async def handle_sms(
 ):
     msg = Body
     response = MessagingResponse()
-    response.message("Hello!")
     split_msg = msg.split()
     if split_msg[0] == "teacher":
         name = split_msg[1]
-        init_topic = split_msg[2]
+        init_topic = " ".join(split_msg[2:])
         id = short_uuid()
         student_id = short_uuid()
         new_class = Subject(
@@ -52,7 +58,7 @@ async def handle_sms(
         r.set(id, json.dumps(new_class.model_dump()))
         r.set(student_id, id)
         response.message(
-            f"Class created successfully :). Share this code with your students: {student_id}\n\n"
+            f"Class created successfully with your ID {id} :). Share this code with your students: {student_id}\n\n"
         )
     else:
         # TODO: actually parse the exam
@@ -85,13 +91,13 @@ async def handle_sms(
             ).model_dump()
             cur_data["latest_reading"] = reading_model.invoke(
                 f"Generate study material on the topic of {new_topic}. Make it a paragraph long."
-            )
+            ).model_dump()
             r.set(parsed_id, json.dumps(cur_data))
 
         elif option == "reading":
             data = json.loads(r.get(r.get(parsed_id)))
             response.message(
-                str(data["latest_reading"]["title"])
+                str(data["latest_reading"]["topic"])
                 + "\n"
                 + str(data["latest_reading"]["content"])
             )
@@ -105,10 +111,10 @@ async def handle_sms(
                     grade += 1
             percentage_grade = round((grade / len(questions)) * 100)
             response.message(
-                f"Okay! You got a {percentage_grade} in this exam. Good job :)\n\n"
+                f"Okay! You got a {percentage_grade}% in this exam. Good job :)\n\n"
             )
 
-    return str(response)
+    return Response(content=str(response), media_type="application/xml")
 
 
 @app.get("/get-exam")
